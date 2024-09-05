@@ -1,22 +1,54 @@
-// Marks.js
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { connect } from 'react-redux';
 import { setPersonalDetails } from '../redux/actionCreators';
-import MarksForm from '../components/forms/MarksForm';  // Renamed component import
+import MarksForm from '../components/forms/MarksForm';
 
 const Marks = (props) => {
     const [showMarksForm, setShowMarksForm] = useState(false);
-    const [numQuestions, setNumQuestions] = useState(3); // Number of questions
-    const [students, setStudents] = useState([
-        { id: 1, name: "Meena Chouhan", enrollment: "0801CS21401", marks: Array(numQuestions).fill('') },
-        { id: 2, name: "Mohan Patel", enrollment: "0801CS21402", marks: Array(numQuestions).fill('') },
-        { id: 3, name: "Ram Sharma", enrollment: "0801CS21403", marks: Array(numQuestions).fill('') },
-        { id: 4, name: "Reena Sharma", enrollment: "0801CS21404", marks: Array(numQuestions).fill('') },
-        { id: 5, name: "Pallavi Patel", enrollment: "0801CS21405", marks: Array(numQuestions).fill('') },
-    ]);
+    const [numQuestions, setNumQuestions] = useState(3);
+    const [students, setStudents] = useState([]);
+    const [courses, setCourses] = useState([]);
+    const [selectedSemester, setSelectedSemester] = useState('');
+    const [selectedCourseCode, setSelectedCourseCode] = useState('');
     const [selectedType, setSelectedType] = useState('');
+
+    useEffect(() => {
+        // Fetch courses from the API
+        const fetchCourses = async () => {
+            try {
+                const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/course-info`);
+                setCourses(response.data);
+            } catch (error) {
+                console.error('Error fetching courses:', error);
+            }
+        };
+
+        fetchCourses();
+    }, []);
+
+    useEffect(() => {
+        // Fetch students based on selected semester, course code, and exam type
+        const fetchStudents = async () => {
+            if (selectedSemester && selectedCourseCode && selectedType) {
+                try {
+                    const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/students`, {
+                        params: {
+                            semester: selectedSemester,
+                            courseCode: selectedCourseCode,
+                            examType: selectedType
+                        }
+                    });
+                    setStudents(response.data.filter(student => student.semester === selectedSemester)); // Filter for additional safety
+                } catch (error) {
+                    console.error('Error fetching students:', error);
+                }
+            }
+        };
+
+        fetchStudents();
+    }, [selectedSemester, selectedCourseCode, selectedType]);
 
     const handleShowClick = () => {
         setShowMarksForm(true);
@@ -27,6 +59,14 @@ const Marks = (props) => {
             student.id === id ? { ...student, marks: student.marks.map((m, i) => i === questionIndex ? marks : m) } : student
         );
         setStudents(updatedStudents);
+    };
+
+    const handleSemesterChange = (event) => {
+        setSelectedSemester(event.target.value);
+    };
+
+    const handleCourseCodeChange = (event) => {
+        setSelectedCourseCode(event.target.value);
     };
 
     const handleTypeChange = (event) => {
@@ -49,19 +89,28 @@ const Marks = (props) => {
             <div className="container">
                 <div className="mb-3">
                     <label htmlFor="course" className="form-label">Course</label>
-                    <input type="text" className="form-control" id="course" name="course" />
+                    <select
+                        id="course"
+                        name="course"
+                        value={selectedCourseCode}
+                        onChange={handleCourseCodeChange}
+                        className="form-select"
+                    >
+                        <option value="" disabled>Select Course Code</option>
+                        {courses.map(course => (
+                            <option key={course.courseCode} value={course.courseCode}>
+                                {course.courseName} ({course.courseCode})
+                            </option>
+                        ))}
+                    </select>
                 </div>
                 <div className="mb-3">
                     <label htmlFor="semester" className="form-label">Semester</label>
-                    <input type="text" className="form-control" id="semester" name="semester" />
-                </div>
-                <div className="mb-3">
-                    <label htmlFor="semesterSelect" className="form-label">Select Semester</label>
                     <select
-                        id="semesterSelect"
-                        name="semesterSelect"
-                        value={selectedType}
-                        onChange={handleTypeChange}
+                        id="semester"
+                        name="semester"
+                        value={selectedSemester}
+                        onChange={handleSemesterChange}
                         className="form-select"
                     >
                         <option value="" disabled>Select Semester</option>
@@ -113,18 +162,22 @@ const Marks = (props) => {
                     students={students} 
                     onMarksChange={handleMarksChange} 
                     numQuestions={numQuestions}
+                    selectedCourseCode={selectedCourseCode}
+                    selectedType={selectedType}
                 />
             )}
         </div>
     );
 };
 
+// Define mapStateToProps function
 const mapStateToProps = (state) => {
     return {
         resume: state.resume.data
     };
 };
 
+// Define mapDispatchToProps function
 const mapDispatchToProps = (dispatch) => ({
     setPersonalDetails: (details) => dispatch(setPersonalDetails(details)),
 });

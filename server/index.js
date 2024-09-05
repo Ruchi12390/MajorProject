@@ -33,7 +33,46 @@ const User = sequelize.define('User', {
 }, {
     timestamps: true,
 });
+const Attendance = sequelize.define('Attendance', {
+  student_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  course_code: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  date: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  present: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+  },
+  createdAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
+  updatedAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  }
+}, {
+  indexes: [
+    {
+      unique: true,
+      fields: ['student_id', 'course_code', 'date']
+    }
+  ]
+});
+
 const CourseInformation = sequelize.define('CourseInformation', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true, // Automatically increment the ID
+    primaryKey: true, // Set this field as the primary key
+  },
   courseName: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -44,12 +83,15 @@ const CourseInformation = sequelize.define('CourseInformation', {
     unique: true, // Ensure course codes are unique
   },
   semester: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING,
     allowNull: false,
   },
 }, {
   timestamps: true, // Adds createdAt and updatedAt fields
-});
+});// Ensure the correct sequelize instance is used
+
+
+
 const StudentInformation = sequelize.define('StudentInformation', {
     firstName: {
         type: DataTypes.STRING,
@@ -123,7 +165,7 @@ app.post('/api/manual-course', async (req, res) => {
     await CourseInformation.create({
       courseName,
       courseCode,
-      semester: parseInt(semester, 10), // Convert to integer
+      semester, 
     });
     res.status(201).json({ message: 'Course added successfully' });
   } catch (error) {
@@ -151,7 +193,7 @@ app.post('/api/upload-courses', upload.single('file'), async (req, res) => {
         results.push({
           courseName: data.courseName,
           courseCode: data.courseCode,
-          semester: parseInt(semester, 10), // Convert to integer
+          semester:data.semester, // Convert to integer
         });
       })
       .on('end', async () => {
@@ -320,7 +362,179 @@ app.delete('/api/delete-student', async (req, res) => {
       res.status(500).json({ message: 'Error updating student', error: error.message });
     }
   });
+  app.put('/api/update-course', async (req, res) => {
+    const { courseCode, courseName, semester } = req.body;
   
+    try {
+      // Find the course by courseCode
+      const course = await CourseInformation.findOne({ where: { courseCode } });
+      if (!course) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+  
+      // Update course details
+      await course.update({ courseName, semester });
+  
+      res.json({ message: 'Course updated successfully' });
+    } catch (error) {
+      console.error('Error updating course:', error);
+      res.status(500).json({ message: 'Error updating course' });
+    }
+  });
+  app.get('/api/course/:courseCode', async (req, res) => {
+    const { courseCode } = req.params;
+  
+    try {
+      // Find the course by courseCode
+      const course = await CourseInformation.findOne({ where: { courseCode } });
+      if (!course) {
+        return res.status(404).json({ message: 'Course not found' });
+      }
+  
+      res.json(course);
+    } catch (error) {
+      console.error('Error fetching course details:', error);
+      res.status(500).json({ message: 'Error fetching course details' });
+    }
+  }); 
+  app.get('/api/students', async (req, res) => {
+    try {
+      const students = await StudentInformation.findAll();
+      res.json(students);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      res.status(500).json({ message: 'Error fetching students' });
+    }
+  });
+  app.get('/api/course-info', async (req, res) => {
+    try {
+      // Assuming CourseInformation is your model
+      const courseInfos = await CourseInformation.findAll({
+        attributes: ['courseCode', 'courseName'] // Adjust attributes as needed
+      });
+      res.json(courseInfos);
+    } catch (error) {
+      console.error('Error fetching course information:', error);
+      res.status(500).json({ message: 'Error fetching course information' });
+    }
+  });
+  app.post('/api/attendance', async (req, res) => {
+    try {
+        const { student_id, course_code, date, present } = req.body;
+
+        // Validate input data
+        if (!student_id || !course_code || !date || present === undefined) {
+            return res.status(400).send('Missing required fields.');
+        }
+
+        // Ensure date is in a valid format
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) {
+            return res.status(400).send('Invalid date format.');
+        }
+
+        // Upsert the attendance record
+        await Attendance.upsert({
+            student_id,
+            course_code,
+            date: parsedDate,
+            present,
+        });
+
+        res.status(200).send('Attendance record saved.');
+    } catch (error) {
+        console.error('Error saving attendance record:', error.message || error);
+        res.status(500).send(`Error saving attendance record: ${error.message || error}`);
+    }
+});
+const StudentMarks = sequelize.define('StudentMarks', {
+  id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true,
+  },
+  studentId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+  },
+  courseCode: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      references: {
+          model: 'CourseInformations', // Ensure this matches your CourseInformation table name
+          key: 'courseCode',
+      },
+  },
+  examType: {
+      type: DataTypes.STRING,
+      allowNull: false,
+  },
+  marks: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+  },
+}, {
+  timestamps: true,
+});
+app.post('/api/save-marks', async (req, res) => {
+  try {
+      const { marksData, courseId, examType } = req.body;
+
+      if (!Array.isArray(marksData) || !courseId || !examType) {
+          return res.status(400).json({ error: 'Invalid data' });
+      }
+
+      // Start a transaction
+      const transaction = await sequelize.transaction();
+
+      try {
+          // Iterate over marksData and save each entry
+          for (const { studentId, marks } of marksData) {
+              await StudentMarks.create({
+                  studentId,
+                  courseCode: courseId,
+                  examType,
+                  marks
+              }, { transaction });
+          }
+
+          // Commit the transaction
+          await transaction.commit();
+
+          res.status(200).json({ message: 'Marks saved successfully' });
+      } catch (error) {
+          // Rollback the transaction in case of error
+          await transaction.rollback();
+          console.error('Error saving marks:', error);
+          res.status(500).json({ error: 'Error saving marks' });
+      }
+  } catch (error) {
+      console.error('Error in /api/save-marks:', error);
+      res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+
+app.get('/marks', async (req, res) => {
+  const { semester, courseCode, examType } = req.query;
+
+  try {
+    const students = await StudentInformation.findAll({
+      include: {
+        model: StudentMarks,
+        where: { examType },
+        required: false,
+      },
+      where: { semester },
+    });
+
+    res.json(students);
+  } catch (error) {
+    console.error('Error fetching student marks:', error);
+    res.status(500).json({ error: 'Failed to fetch student marks' });
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
