@@ -7,7 +7,7 @@ const MarksForm = ({ students, onMarksChange, numQuestions, selectedCourseCode, 
 
     const handleSaveMarks = async () => {
         const marksData = students.map(student => ({
-            studentId: student.id,
+            studentId: student.enrollment,
             marks: student.marks,
         }));
     

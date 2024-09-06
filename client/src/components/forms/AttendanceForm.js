@@ -1,16 +1,95 @@
-import React from 'react';
-import 'bootstrap/dist/css/bootstrap.min.css'; // Ensure Bootstrap is imported
+import React, { useEffect, useState } from 'react';
+import 'bootstrap/dist/css/bootstrap.min.css';
 import axios from 'axios';
 
+// Component to display attendance count for a student
+const AttendanceCount = ({ studentId, courseCode }) => {
+    const [attendanceCount, setAttendanceCount] = useState({ present: 0, absent: 0 });
+
+    useEffect(() => {
+        const fetchAttendanceCount = async () => {
+            try {
+                const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/attendance/count`, {
+                    params: {
+                        student_id: studentId,
+                        course_code: courseCode,
+                    },
+                });
+
+                setAttendanceCount(response.data);
+            } catch (error) {
+                console.error('Error fetching attendance count:', error.response ? error.response.data : error.message);
+            }
+        };
+
+        fetchAttendanceCount();
+    }, [studentId, courseCode]);
+
+    return (
+        <div>
+            <p><strong>Present:</strong> {attendanceCount.present}</p>
+            <p><strong>Absent:</strong> {attendanceCount.absent}</p>
+        </div>
+    );
+};
+
+// Component to handle each student's attendance marking
+const AttendanceRow = ({ student, onAttendanceChange, courseCode }) => {
+    const handleCheckboxChange = (present) => {
+        onAttendanceChange(student.id, present);
+    };
+
+    return (
+        <tr key={student.id}>
+            <td>{student.id}</td>
+            <td>{student.enrollment}</td>
+            <td>{student.firstName} {student.lastName}</td>
+            <td>
+                <div className="form-check">
+                    <input
+                        className="form-check-input"
+                        type="radio"
+                        id={`present-${student.id}`}
+                        name={`attendance-${student.id}`}
+                        checked={student.present === true}
+                        onChange={() => handleCheckboxChange(true)}
+                    />
+                    <label className="form-check-label" htmlFor={`present-${student.id}`}>
+                        Present
+                    </label>
+                </div>
+            </td>
+            <td>
+                <div className="form-check">
+                    <input
+                        className="form-check-input"
+                        type="radio"
+                        id={`absent-${student.id}`}
+                        name={`attendance-${student.id}`}
+                        checked={student.present === false}
+                        onChange={() => handleCheckboxChange(false)}
+                    />
+                    <label className="form-check-label" htmlFor={`absent-${student.id}`}>
+                        Absent
+                    </label>
+                </div>
+            </td>
+            <td>
+                <AttendanceCount studentId={student.enrollment} courseCode={courseCode} />
+            </td>
+        </tr>
+    );
+};
+
+// Main Attendance Form component
 const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, selectedCourseCode, date }) => {
-    // Filter students based on the selected semester
     const filteredStudents = students.filter(student => student.semester === selectedSemester);
 
     const handleSaveAttendance = async () => {
         try {
             await Promise.all(filteredStudents.map(student =>
                 axios.post(`${process.env.REACT_APP_API_URL}/api/attendance`, {
-                    student_id: student.id,
+                    student_id: student.enrollment,
                     course_code: selectedCourseCode,
                     date,
                     present: student.present === true,
@@ -21,10 +100,6 @@ const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, select
             console.error('Error saving attendance:', error.response ? error.response.data : error.message);
             alert('Failed to save attendance records.');
         }
-    };
-
-    const handleCheckboxChange = (id, present) => {
-        onAttendanceChange(id, present); // Trigger attendance change
     };
 
     return (
@@ -41,45 +116,17 @@ const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, select
                             <th>Name</th>
                             <th>Present</th>
                             <th>Absent</th>
+                            <th>Total Attendance</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredStudents.map(student => (
-                            <tr key={student.id}>
-                                <td>{student.id}</td>
-                                <td>{student.enrollment}</td>
-                                <td>{student.firstName} {student.lastName}</td>
-                                <td>
-                                    <div className="form-check">
-                                        <input
-                                            className="form-check-input"
-                                            type="radio"
-                                            id={`present-${student.id}`}
-                                            name={`attendance-${student.id}`}
-                                            checked={student.present === true}
-                                            onChange={() => handleCheckboxChange(student.id, true)}
-                                        />
-                                        <label className="form-check-label" htmlFor={`present-${student.id}`}>
-                                            Present
-                                        </label>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div className="form-check">
-                                        <input
-                                            className="form-check-input"
-                                            type="radio"
-                                            id={`absent-${student.id}`}
-                                            name={`attendance-${student.id}`}
-                                            checked={student.present === false}
-                                            onChange={() => handleCheckboxChange(student.id, false)}
-                                        />
-                                        <label className="form-check-label" htmlFor={`absent-${student.id}`}>
-                                            Absent
-                                        </label>
-                                    </div>
-                                </td>
-                            </tr>
+                            <AttendanceRow
+                                key={student.id}
+                                student={student}
+                                onAttendanceChange={onAttendanceChange}
+                                courseCode={selectedCourseCode}
+                            />
                         ))}
                     </tbody>
                 </table>

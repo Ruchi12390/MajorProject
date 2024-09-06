@@ -35,7 +35,7 @@ const User = sequelize.define('User', {
 });
 const Attendance = sequelize.define('Attendance', {
   student_id: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.STRING,
     allowNull: false,
   },
   course_code: {
@@ -454,7 +454,7 @@ const StudentMarks = sequelize.define('StudentMarks', {
       primaryKey: true,
   },
   studentId: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: false,
   },
   courseCode: {
@@ -534,7 +534,30 @@ app.get('/marks', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch student marks' });
   }
 });
+app.get('/api/attendance/count', async (req, res) => {
+  const { student_id, course_code } = req.query;
 
+  try {
+      const attendanceCount = await Attendance.findOne({
+          attributes: [
+              [Sequelize.fn('SUM', Sequelize.literal(`CASE WHEN present = true THEN 1 ELSE 0 END`)), 'present'],
+              [Sequelize.fn('SUM', Sequelize.literal(`CASE WHEN present = false THEN 1 ELSE 0 END`)), 'absent']
+          ],
+          where: {
+              student_id,
+              course_code
+          }
+      });
+
+      res.json({
+          present: attendanceCount.dataValues.present || 0,
+          absent: attendanceCount.dataValues.absent || 0
+      });
+  } catch (error) {
+      console.error('Error fetching attendance count:', error);
+      res.status(500).json({ error: 'Failed to fetch attendance count' });
+  }
+});
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
