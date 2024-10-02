@@ -1,0 +1,40 @@
+.attendance-container {
+    border: 2px solid #007bff; /* Border color */
+    padding: 20px;
+    margin: 20px auto;
+    max-width: 600px; /* Center the container */
+    background-color: #f9f9f9;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.welcome-text {
+    color: #007bff;
+    font-size: 1.2em;
+    margin-bottom: 20px;
+}
+
+.error-text {
+    color: red;
+}
+
+.attendance-list, .marks-list {
+    list-style: none;
+    padding: 0;
+}
+
+.attendance-item, .marks-item {
+    background-color: #e9ecef;
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+    transition: transform 0.3s ease;
+}
+
+.attendance-item:hover, .marks-item:hover {
+    transform: scale(1.02); /* Hover effect */
+}
+
+.attendance-item strong, .marks-item strong {
+    color: #007bff;
+}

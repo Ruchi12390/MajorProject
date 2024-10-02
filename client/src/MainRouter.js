@@ -10,7 +10,7 @@ import Attendance from './components/Attendance';
 import Builder from "./components/Builder";
 import ProtectedRoute from './ProtectedRoute';
 import 'bootstrap/dist/css/bootstrap.css';  // Ensure Bootstrap CSS is imported
-
+import AttendancePage from './components/forms/StudentAttendance';
 const MainRouter = () => {
     const [token, setToken] = useState(localStorage.getItem('token'));
 
@@ -39,6 +39,7 @@ const MainRouter = () => {
                     <Route path="/login" element={<Login onLogin={handleLogin} />} />
                     <Route path="/attendance" element={<Attendance />} />
                     <Route path="/marks" element={<Marks />} />
+                    <Route path="/student-attendance" element={<AttendancePage />} />
                     <Route path="/builder" element={<ProtectedRoute token={token}><Builder /></ProtectedRoute>} />
                 </Routes>
             </div>

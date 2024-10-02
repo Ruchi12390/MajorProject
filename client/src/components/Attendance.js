@@ -64,7 +64,7 @@ const Attendance = () => {
     if (error) return <p>{error}</p>;
 
     return (
-        <div className="container mt-4">
+        <div className="container mt-4 new" style={{ maxWidth: '800px', marginTop: '20px',padding:'20px' }}>
             <h6 className="mb-4">
                 Department of Computer Engineering
             </h6>
@@ -84,6 +84,7 @@ const Attendance = () => {
                             {courses.map(course => (
                                 <option key={course} value={course}>{course}</option>
                             ))}
+                            
                         </select>
                     </div>
                     <div className="mb-3">
@@ -136,7 +137,8 @@ const Attendance = () => {
                 </div>
             </div>
             {showAttendanceForm && (
-                <AttendanceForm 
+                  <AttendanceForm 
+                     style={{ maxWidth: '1000px', marginTop: '20px',padding:'20px' }}
                     students={students} 
                     onAttendanceChange={handleAttendanceChange} 
                     selectedSemester={selectedSemester}

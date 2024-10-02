@@ -13,6 +13,7 @@ export default function Signup() {
         password: '',
         email: '',
         role: 'student', // Default role
+        enrollment: '', // Add enrollment to state
         error: ''
     });
 
@@ -28,6 +29,7 @@ export default function Signup() {
         email: /^([a-zA-Z0-9_\.\+-]+)@([a-zA-Z\d\.-]+)\.([a-zA-Z]{2,6})$/,
         name: /^[A-Za-z]{2,}$/,
         password: /^(?=.*\d)(?=.*[a-zA-Z]).{6,}$/
+        // Removed enrollment regex validation
     };
 
     const validateInput = (name, input) => {
@@ -54,6 +56,7 @@ export default function Signup() {
                     setErrorText({ ...errorText, password: '' });
                 }
                 break;
+            // Removed validation for enrollment
             default:
                 break;
         }
@@ -73,13 +76,19 @@ export default function Signup() {
             return;
         }
     
+        const userDetails = {
+            email: values.email,
+            password: values.password,
+            role: values.role || 'student', // Default to 'student' if role is not provided
+            enrollment: values.enrollment // Set this based on your requirement
+        };
+    
         try {
             const response = await fetch('http://localhost:5000/api/signup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(values)
+                body: JSON.stringify(userDetails)
             });
-            
     
             const data = await response.json();
     
@@ -94,7 +103,7 @@ export default function Signup() {
     };
 
     return (
-        <Container className="mt-5 signup" style={{ maxWidth: '430px', marginTop: '20px',padding:'20px' }}>
+        <Container className="mt-5 signup" style={{ maxWidth: '430px', marginTop: '20px', padding: '20px' }}>
             <div className="text-center mb-4">
                 <FaLock size={50} />
                 <h1 className="h3 mb-3 font-weight-normal">Sign Up</h1>
@@ -152,6 +161,18 @@ export default function Signup() {
                         invalid={!!errorText.password}
                     />
                     {errorText.password && <div className="invalid-feedback">{errorText.password}</div>}
+                </FormGroup>
+                <FormGroup>
+                    <Label for="enrollment">Enrollment Number</Label>
+                    <Input
+                        type="text"
+                        name="enrollment"
+                        id="enrollment"
+                        placeholder="Enrollment Number"
+                        value={values.enrollment}
+                        onChange={handleInputChange}
+                    />
+                    {/* Removed validation feedback for enrollment */}
                 </FormGroup>
                 <FormGroup>
                     <Label for="role">Role</Label>

@@ -16,23 +16,30 @@ const sequelize = new Sequelize(process.env.DB_URL, {
 });
 
 const User = sequelize.define('User', {
-    email: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true
-    },
-    password: {
-        type: DataTypes.STRING,
-        allowNull: false
-    },
-    role: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        defaultValue: 'student'
-    }
+  email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true
+  },
+  password: {
+      type: DataTypes.STRING,
+      allowNull: false
+  },
+  role: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'student'
+  },
+  
+  enrollment: {
+      type: DataTypes.STRING,
+      allowNull: false, // If enrollment is optional, otherwise set allowNull to false
+      unique: true // If enrollment should be unique for each student
+  }
 }, {
-    timestamps: true,
+  timestamps: true,
 });
+
 const Attendance = sequelize.define('Attendance', {
   student_id: {
     type: DataTypes.STRING,
@@ -114,6 +121,23 @@ const StudentInformation = sequelize.define('StudentInformation', {
     tableName: 'StudentInformations', // Explicitly define the table name
     timestamps: true,
 });
+// Associations between models
+
+// Defining associations for Sequelize models
+StudentInformation.hasMany(Attendance, {
+  foreignKey: 'student_id',
+  sourceKey: 'enrollment',
+  as: 'attendanceRecords'
+});
+
+Attendance.belongsTo(StudentInformation, {
+  foreignKey: 'student_id',
+  targetKey: 'enrollment',
+  as: 'studentInfo'
+});
+
+// Attendance model does not need an explicit association with StudentInformation,
+// because we are directly using enrollment (stored as student_id in Attendance).
 
 
 sequelize.sync().then(() => {
@@ -133,26 +157,28 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 app.post('/api/signup', async (req, res) => {
-    const { email, password, role } = req.body;
+  const { email, password, role, enrollment } = req.body;  // Added enrollment
 
-    try {
-        const hashedPassword = await bcrypt.hash(password, 10);
+  try {
+      const hashedPassword = await bcrypt.hash(password, 10);
 
-        const newUser = await User.create({
-            email,
-            password: hashedPassword,
-            role
-        });
+      const newUser = await User.create({
+          email,
+          password: hashedPassword,
+          role,
+          enrollment  // Now properly using enrollment
+      });
 
-        res.status(201).json({ message: 'User created successfully' });
-    } catch (error) {
-        console.error(error);
-        if (error.name === 'SequelizeUniqueConstraintError') {
-            return res.status(400).json({ error: 'Email already exists' });
-        }
-        res.status(500).json({ error: 'An error occurred' });
-    }
+      res.status(201).json({ message: 'User created successfully' });
+  } catch (error) {
+      console.error(error);
+      if (error.name === 'SequelizeUniqueConstraintError') {
+          return res.status(400).json({ error: 'Email already exists' });
+      }
+      res.status(500).json({ error: 'An error occurred' });
+  }
 });
+
 // server/routes/courses.js
 app.post('/api/manual-course', async (req, res) => {
   const { courseName, courseCode, semester } = req.body;
@@ -212,30 +238,7 @@ app.post('/api/upload-courses', upload.single('file'), async (req, res) => {
   }
 });
 
-app.post('/api/login', async (req, res) => {
-    const { email, password } = req.body;
 
-    try {
-        const user = await User.findOne({ where: { email } });
-        if (!user) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
-
-        const validPassword = await bcrypt.compare(password, user.password);
-        if (!validPassword) {
-            return res.status(401).json({ error: 'Invalid email or password' });
-        }
-
-        const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
-            expiresIn: '1h'
-        });
-
-        return res.json({ token, role: user.role });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'An error occurred' });
-    }
-});
 app.post('/api/manual-entry', async (req, res) => {
     const { firstName, lastName, enrollment, semester } = req.body;
 
@@ -362,6 +365,23 @@ app.delete('/api/delete-student', async (req, res) => {
       res.status(500).json({ message: 'Error updating student', error: error.message });
     }
   });
+  app.get('/api/student/:enrollment', async (req, res) => {
+    const { enrollment } = req.params;
+
+    try {
+        const student = await StudentInformation.findOne({ where: { enrollment } });
+
+        if (!student) {
+            return res.status(404).json({ error: 'Student record not found' });
+        }
+
+        res.status(200).json({ student });
+    } catch (error) {
+        console.error('Error fetching student information:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
   app.put('/api/update-course', async (req, res) => {
     const { courseCode, courseName, semester } = req.body;
   
@@ -558,6 +578,78 @@ app.get('/api/attendance/count', async (req, res) => {
       res.status(500).json({ error: 'Failed to fetch attendance count' });
   }
 });
+// In your attendance controller (Node.js/Express)
+
+// User login route
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+      // Find the user by email
+      const user = await User.findOne({ where: { email } });
+
+      if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Compare the passwords
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+          return res.status(401).json({ error: 'Invalid credentials' });
+      }
+
+      // Fetch student's enrollment from user info
+      const enrollment = user.enrollment;
+
+      // Fetch attendance based on enrollment (student_id in Attendance)
+      const attendanceRecords = await Attendance.findAll({
+          where: { student_id: enrollment }
+      });
+
+      // Sending back the user info and attendance records
+      res.status(200).json({ user, enrollment, attendance: attendanceRecords }); // Include enrollment here
+  } catch (error) {
+      console.error('Error logging in:', error);
+      res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.get('/api/attendance/:studentId', async (req, res) => {
+  try {
+      const { studentId } = req.params;
+      const attendanceRecords = await Attendance.findAll({
+          where: { student_id: studentId }  // Ensure this matches your database field
+      });
+      res.json(attendanceRecords);
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+app.get('/api/marks/:enrollment', async (req, res) => {
+  const { enrollment } = req.params;
+  
+  try {
+      // Fetch the student marks based on enrollment
+      const marksRecords = await StudentMarks.findAll({
+          where: {studentId: enrollment}, // Assuming "enrollment" is the column name in your StudentMarks table
+          attributes: ['courseCode', 'examType', 'marks'], // Fetch only the relevant fields
+      });
+
+      if (marksRecords.length === 0) {
+          return res.status(404).json({ message: 'No marks found for this student.' });
+      }
+
+      // Send back the records in JSON format
+      res.json(marksRecords);
+  } catch (error) {
+      console.error('Error fetching student marks:', error);
+      res.status(500).json({ message: 'Server error, please try again later.' });
+  }
+});
+
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
