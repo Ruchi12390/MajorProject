@@ -8,37 +8,43 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const app = express();
+const { Op } = require('sequelize');
 app.use(cors());
 app.use(express.json());
 
 const sequelize = new Sequelize(process.env.DB_URL, {
     dialect: 'postgres',
 });
-
 const User = sequelize.define('User', {
+  id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+  },
+  name: {
+      type: DataTypes.STRING,
+      allowNull: false,
+  },
   email: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true
+      unique: true, // Ensure this is set for unique emails
   },
   password: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: false,
   },
   role: {
       type: DataTypes.STRING,
       allowNull: false,
-      defaultValue: 'student'
+      defaultValue: 'student', // Set a default value if needed
   },
-  
   enrollment: {
       type: DataTypes.STRING,
-      allowNull: false, // If enrollment is optional, otherwise set allowNull to false
-      unique: true // If enrollment should be unique for each student
+      allowNull: true, // Adjust based on your requirements
   }
-}, {
-  timestamps: true,
 });
+
 
 const Attendance = sequelize.define('Attendance', {
   student_id: {
@@ -157,12 +163,13 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 app.post('/api/signup', async (req, res) => {
-  const { email, password, role, enrollment } = req.body;  // Added enrollment
+  const { name,email, password, role, enrollment } = req.body;  // Added enrollment
 
   try {
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const newUser = await User.create({
+          name,
           email,
           password: hashedPassword,
           role,
@@ -430,7 +437,7 @@ app.delete('/api/delete-student', async (req, res) => {
     try {
       // Assuming CourseInformation is your model
       const courseInfos = await CourseInformation.findAll({
-        attributes: ['courseCode', 'courseName'] // Adjust attributes as needed
+        attributes: ['courseCode', 'courseName','semester'] // Adjust attributes as needed
       });
       res.json(courseInfos);
     } catch (error) {
@@ -554,30 +561,40 @@ app.get('/marks', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch student marks' });
   }
 });
+
 app.get('/api/attendance/count', async (req, res) => {
   const { student_id, course_code } = req.query;
 
-  try {
-      const attendanceCount = await Attendance.findOne({
-          attributes: [
-              [Sequelize.fn('SUM', Sequelize.literal(`CASE WHEN present = true THEN 1 ELSE 0 END`)), 'present'],
-              [Sequelize.fn('SUM', Sequelize.literal(`CASE WHEN present = false THEN 1 ELSE 0 END`)), 'absent']
-          ],
-          where: {
-              student_id,
-              course_code
-          }
-      });
+  if (!student_id || !course_code) {
+    return res.status(400).json({ error: 'Missing student_id or course_code' });
+  }
 
-      res.json({
-          present: attendanceCount.dataValues.present || 0,
-          absent: attendanceCount.dataValues.absent || 0
-      });
+  try {
+    const attendanceCount = await Attendance.findOne({
+      attributes: [
+        [Sequelize.fn('COUNT', Sequelize.literal(`CASE WHEN present = true THEN 1 END`)), 'present'],
+        [Sequelize.fn('COUNT', Sequelize.literal(`CASE WHEN present = false THEN 1 END`)), 'absent']
+      ],
+      where: {
+        student_id,
+        course_code
+      }
+    });
+
+    if (!attendanceCount) {
+      return res.status(404).json({ error: 'Attendance not found' });
+    }
+
+    res.json({
+      present: attendanceCount.get('present') || 0,
+      absent: attendanceCount.get('absent') || 0
+    });
   } catch (error) {
-      console.error('Error fetching attendance count:', error);
-      res.status(500).json({ error: 'Failed to fetch attendance count' });
+    console.error('Error fetching attendance count:', error);
+    res.status(500).json({ error: 'Failed to fetch attendance count' });
   }
 });
+
 // In your attendance controller (Node.js/Express)
 
 // User login route
@@ -585,47 +602,69 @@ app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
 
   try {
-      // Find the user by email
-      const user = await User.findOne({ where: { email } });
+    // Find the user by email
+    const user = await User.findOne({ where: { email } });
 
-      if (!user) {
-          return res.status(404).json({ error: 'User not found' });
-      }
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
 
-      // Compare the passwords
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-          return res.status(401).json({ error: 'Invalid credentials' });
-      }
+    // Compare the passwords
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
 
-      // Fetch student's enrollment from user info
-      const enrollment = user.enrollment;
+    // Fetch student's enrollment from user info
+    const enrollment = user.enrollment;
+    
+    // Fetch attendance based on enrollment (student_id in Attendance)
+    const attendanceRecords = await Attendance.findAll({
+      where: { student_id: enrollment }
+    });
 
-      // Fetch attendance based on enrollment (student_id in Attendance)
+    // Sending back the user info, role, enrollment, and attendance records
+    res.status(200).json({
+      token: 'your_jwt_token', 
+      // Assuming you're sending a token
+      role: user.role,         // Include the role from the user table
+      enrollment,              // Include enrollment as well
+      attendance: attendanceRecords
+    });
+  } catch (error) {
+    console.error('Error logging in:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Attendance Model
+Attendance.belongsTo(CourseInformation, { foreignKey: 'course_code', targetKey: 'courseCode', as: 'course' });
+
+// CourseInformation Model
+CourseInformation.hasMany(Attendance, { foreignKey: 'course_code', sourceKey: 'courseCode' });
+// Assuming you have a 'Teacher' and 'CourseInformation' model
+
+
+app.get('/api/attendance/:studentId', async (req, res) => {
+  const { studentId } = req.params;  // Corrected to studentId
+
+  try {
       const attendanceRecords = await Attendance.findAll({
-          where: { student_id: enrollment }
+          where: { student_id: studentId },  // Use studentId here
+          include: [{
+              model: CourseInformation,
+              as: 'course',  // alias for the relation
+              attributes: ['courseName'], // Only get the course name
+          }]
       });
 
-      // Sending back the user info and attendance records
-      res.status(200).json({ user, enrollment, attendance: attendanceRecords }); // Include enrollment here
+      res.json(attendanceRecords);
   } catch (error) {
-      console.error('Error logging in:', error);
+      console.error('Error fetching attendance:', error);
       res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-app.get('/api/attendance/:studentId', async (req, res) => {
-  try {
-      const { studentId } = req.params;
-      const attendanceRecords = await Attendance.findAll({
-          where: { student_id: studentId }  // Ensure this matches your database field
-      });
-      res.json(attendanceRecords);
-  } catch (error) {
-      console.error(error);
-      res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
 
 app.get('/api/marks/:enrollment', async (req, res) => {
   const { enrollment } = req.params;
@@ -648,6 +687,178 @@ app.get('/api/marks/:enrollment', async (req, res) => {
       res.status(500).json({ message: 'Server error, please try again later.' });
   }
 });
+
+
+// In your models (assuming the relationship is courseCode)
+Attendance.belongsTo(CourseInformation, { foreignKey: 'course_code', targetKey: 'courseCode' });
+CourseInformation.hasMany(Attendance, { foreignKey: 'course_code', sourceKey: 'courseCode' });
+app.get('/api/record', async (req, res) => {
+  const { fromDate, toDate, courseCode, semester } = req.query;
+
+  // Input validation (basic check)
+  if (!fromDate || !toDate || !semester) {
+      return res.status(400).json({ error: 'fromDate, toDate, and semester are required' });
+  }
+
+  try {
+      // Fetch attendance records for a specific course or all courses
+      const attendanceRecords = await Attendance.findAll({
+          where: {
+              date: {
+                  [Op.between]: [new Date(fromDate), new Date(toDate)],
+              },
+          },
+          include: [
+              {
+                  model: CourseInformation,
+                  where: {
+                      ...(courseCode ? { courseCode: courseCode } : {}), // Apply courseCode filter only if it exists
+                      semester: semester,
+                  },
+                  attributes: ['courseCode', 'semester'],
+              }
+          ],
+      });
+
+      res.json(attendanceRecords);
+  } catch (error) {
+      console.error('Error fetching attendance records:', error.message);
+      console.error(error.stack);
+      res.status(500).json({ error: 'Error fetching attendance records' });
+  }
+});
+
+
+
+
+
+//models/Teacher.js
+const Teacher = sequelize.define('Teacher', {
+  id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+  },
+  userId: {
+      type: DataTypes.STRING,
+      allowNull: false, // References User model's id
+  },
+  name: {
+      type: DataTypes.STRING,
+      allowNull: false,
+  },
+  email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique:false,
+  },
+  semester: {
+    type: DataTypes.STRING,
+    allowNull: false,
+ },
+  courseCode: {
+      type: DataTypes.STRING,
+      allowNull: false,
+  },
+});
+
+
+// GET user-info endpoint using URL parameters
+// GET user-info endpoint using URL parameters
+app.get('/api/user-info/:enrollment', async (req, res) => {
+  const { enrollment } = req.params; // Get enrollment from route parameters
+
+  try {
+      // Find user by enrollment
+      const user = await User.findOne({ where: { enrollment } });
+
+      if (!user) {
+          return res.status(404).json({ message: 'User not found' });
+      }
+
+      res.status(200).json(user);
+  } catch (error) {
+      console.error('Error fetching user info:', error);
+      res.status(500).json({ message: 'An error occurred while fetching user info.' });
+  }
+});
+app.post('/api/teacher/courses', async (req, res) => {
+   console.log('Received request body:', req.body); // Add this line
+    
+  const { teacherId, name, email, courseIds, semester } = req.body;
+
+  // Debug: Log incoming request
+  console.log('Received request body:', req.body);
+
+  try {
+      if (!Array.isArray(courseIds) || courseIds.length === 0) {
+          return res.status(400).json({ message: 'No courses selected.' });
+      }
+
+      // Loop through the selected courses and create teacher entries
+      const teacherEntries = courseIds.map(courseId => ({
+          userId: teacherId,
+          name: name,
+          email: email,
+          courseCode: courseId,
+          semester: semester
+      }));
+
+      // Check for existing entries to avoid duplicates
+      for (const entry of teacherEntries) {
+          const existingTeacher = await Teacher.findOne({
+              where: { email: entry.email, courseCode: entry.courseCode }
+          });
+          if (!existingTeacher) {
+              await Teacher.create(entry);
+          }
+      }
+
+      res.status(200).json({ message: 'Courses assigned successfully!' });
+  } catch (error) {
+      // Log detailed error information
+      console.error('Error assigning courses:', error);
+      res.status(500).json({ message: 'An error occurred while assigning courses.' });
+  }
+});
+app.get('/api/teacher-courses/:enrollment', async (req, res) => {
+  const { enrollment } = req.params;
+  
+  try {
+      // Fetch the courses taught by the teacher based on their enrollment ID
+      const teacherCourses = await Teacher.findAll({
+          where: { userId:enrollment }, // Adjust according to your actual column name
+          attributes: ['courseCode', 'semester'], // Assuming these fields exist
+      });
+
+      res.status(200).json(teacherCourses);
+  } catch (error) {
+      console.error('Error fetching teacher courses:', error);
+      res.status(500).json({ message: 'Error fetching courses' });
+  }
+});
+
+// Route to get course details by courseCode
+app.get('/api/course/:courseCode', async (req, res) => {
+    const { courseCode } = req.params;
+    
+    try {
+        // Fetch course based on courseCode
+        const course = await CourseInformations.findOne({
+            where: { courseCode },
+        });
+
+        if (!course) {
+            return res.status(404).json({ message: 'Course not found' });
+        }
+
+        res.json(course);  // Send back course data
+    } catch (error) {
+        console.error('Error fetching course:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 
 
 const PORT = process.env.PORT || 5000;

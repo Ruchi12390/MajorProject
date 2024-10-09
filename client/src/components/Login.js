@@ -59,18 +59,23 @@ export default function Login({ onLogin }) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(values)
             });
-    
+        
             const data = await response.json();
-    
+            console.log('Login response:', data); // Check the response data
+        
             if (response.ok) {
                 onLogin(data.token);
-                localStorage.setItem('role', data.role);
-                if (data.role === 'teacher') {
-                    navigate('/builder');
+    
+                localStorage.setItem('enrollment', data.enrollment);; // Access the role from data.user
+                console.log('Role:', data.enrollment); // Log the correct role
+                
+                if (data.role === 'teacher') { // Access role directly from the data object
+                    navigate('/teacher');
                 } else {
-                    console.log('Student enrollment:', data.enrollment); // This should log the enrollment
+                    console.log('Student enrollment:', data.enrollment); // Log enrollment
                     navigate('/student-attendance', { state: { enrollment: data.enrollment } }); // Pass enrollment to state
                 }
+                
             } else {
                 setValues({ ...values, error: data.error });
             }
@@ -78,6 +83,7 @@ export default function Login({ onLogin }) {
             setValues({ ...values, error: 'An error occurred' });
         }
     };
+    
     
     
     

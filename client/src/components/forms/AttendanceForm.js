@@ -8,6 +8,11 @@ const AttendanceCount = ({ studentId, courseCode }) => {
 
     useEffect(() => {
         const fetchAttendanceCount = async () => {
+            if (!studentId || !courseCode) {
+                console.error('Missing studentId or courseCode.');
+                return;
+            }
+        
             try {
                 const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/attendance/count`, {
                     params: {
@@ -15,18 +20,19 @@ const AttendanceCount = ({ studentId, courseCode }) => {
                         course_code: courseCode,
                     },
                 });
-
+        
                 setAttendanceCount(response.data);
             } catch (error) {
                 console.error('Error fetching attendance count:', error.response ? error.response.data : error.message);
             }
         };
+        console.log("Fetching attendance count for:", { studentId, courseCode });        
 
         fetchAttendanceCount();
     }, [studentId, courseCode]);
 
     return (
-        <div>
+        <div >
             <p><strong>Present:</strong> {attendanceCount.present}</p>
             <p><strong>Absent:</strong> {attendanceCount.absent}</p>
         </div>
@@ -34,9 +40,10 @@ const AttendanceCount = ({ studentId, courseCode }) => {
 };
 
 // Component to handle each student's attendance marking
+// Component to handle each student's attendance marking
 const AttendanceRow = ({ student, onAttendanceChange, courseCode }) => {
-    const handleCheckboxChange = (present) => {
-        onAttendanceChange(student.id, present);
+    const handleCheckboxChange = (isPresent) => {
+        onAttendanceChange(student.id, isPresent);
     };
 
     return (
@@ -48,29 +55,13 @@ const AttendanceRow = ({ student, onAttendanceChange, courseCode }) => {
                 <div className="form-check">
                     <input
                         className="form-check-input"
-                        type="radio"
-                        id={`present-${student.id}`}
-                        name={`attendance-${student.id}`}
+                        type="checkbox"
+                        id={`attendance-${student.id}`}
                         checked={student.present === true}
-                        onChange={() => handleCheckboxChange(true)}
+                        onChange={(e) => handleCheckboxChange(e.target.checked)}
                     />
-                    <label className="form-check-label" htmlFor={`present-${student.id}`}>
+                    <label className="form-check-label" htmlFor={`attendance-${student.id}`}>
                         Present
-                    </label>
-                </div>
-            </td>
-            <td>
-                <div className="form-check">
-                    <input
-                        className="form-check-input"
-                        type="radio"
-                        id={`absent-${student.id}`}
-                        name={`attendance-${student.id}`}
-                        checked={student.present === false}
-                        onChange={() => handleCheckboxChange(false)}
-                    />
-                    <label className="form-check-label" htmlFor={`absent-${student.id}`}>
-                        Absent
                     </label>
                 </div>
             </td>
@@ -81,8 +72,9 @@ const AttendanceRow = ({ student, onAttendanceChange, courseCode }) => {
     );
 };
 
+
 // Main Attendance Form component
-const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, selectedCourseCode, date }) => {
+const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, selectedCourse, date }) => {
     const filteredStudents = students.filter(student => student.semester === selectedSemester);
 
     const handleSaveAttendance = async () => {
@@ -90,9 +82,9 @@ const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, select
             await Promise.all(filteredStudents.map(student =>
                 axios.post(`${process.env.REACT_APP_API_URL}/api/attendance`, {
                     student_id: student.enrollment,
-                    course_code: selectedCourseCode,
+                    course_code: selectedCourse,
                     date,
-                    present: student.present === true,
+                    present: student.present === true, // This will be true if the checkbox is checked
                 })
             ));
             alert('Attendance records saved successfully.');
@@ -101,11 +93,12 @@ const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, select
             alert('Failed to save attendance records.');
         }
     };
+    
 
     return (
         <div className="container mt-4 p-3 border rounded">
             <h6 className="mb-4">Mark Attendance</h6>
-            <p><strong>Course Code:</strong> {selectedCourseCode}</p>
+            <p><strong>Course Code:</strong> {selectedCourse}</p>
             <p><strong>Date:</strong> {date}</p>
             <div className="table-responsive">
                 <table className="table table-bordered">
@@ -125,7 +118,7 @@ const AttendanceForm = ({ students, onAttendanceChange, selectedSemester, select
                                 key={student.id}
                                 student={student}
                                 onAttendanceChange={onAttendanceChange}
-                                courseCode={selectedCourseCode}
+                                courseCode={selectedCourse}
                             />
                         ))}
                     </tbody>

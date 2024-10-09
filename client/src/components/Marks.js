@@ -7,21 +7,28 @@ import MarksForm from '../components/forms/MarksForm';
 
 const Marks = (props) => {
     const [showMarksForm, setShowMarksForm] = useState(false);
-    const [numQuestions, setNumQuestions] = useState(3);
+    const [numQuestions, setNumQuestions] = useState([]);
     const [students, setStudents] = useState([]);
     const [courses, setCourses] = useState([]);
-    const [selectedSemester, setSelectedSemester] = useState('');
     const [selectedCourseCode, setSelectedCourseCode] = useState('');
+    const [selectedSemester, setSelectedSemester] = useState('');
     const [selectedType, setSelectedType] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
-        // Fetch courses from the API
+        const enrollment = localStorage.getItem('enrollment');
+        console.log(enrollment); // Debugging enrollment
         const fetchCourses = async () => {
             try {
-                const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/course-info`);
+                // Fetch teacher's courses based on enrollment
+                const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/teacher-courses/${enrollment}`);
                 setCourses(response.data);
             } catch (error) {
                 console.error('Error fetching courses:', error);
+                setError('Error fetching courses');
+            } finally {
+                setLoading(false);
             }
         };
 
@@ -50,8 +57,18 @@ const Marks = (props) => {
         fetchStudents();
     }, [selectedSemester, selectedCourseCode, selectedType]);
 
+    const handleCourseClick = (courseCode, semester) => {
+        setSelectedCourseCode(courseCode);
+        setSelectedSemester(semester);
+        setShowMarksForm(false); // Reset form visibility when new course is selected
+    };
+
     const handleShowClick = () => {
-        setShowMarksForm(true);
+        if (selectedCourseCode && selectedSemester && selectedType) {
+            setShowMarksForm(true);
+        } else {
+            alert('Please select a course, semester, and exam type.');
+        }
     };
 
     const handleMarksChange = (id, questionIndex, marks) => {
@@ -61,14 +78,6 @@ const Marks = (props) => {
         setStudents(updatedStudents);
     };
 
-    const handleSemesterChange = (event) => {
-        setSelectedSemester(event.target.value);
-    };
-
-    const handleCourseCodeChange = (event) => {
-        setSelectedCourseCode(event.target.value);
-    };
-
     const handleTypeChange = (event) => {
         setSelectedType(event.target.value);
     };
@@ -76,86 +85,78 @@ const Marks = (props) => {
     const handleNumQuestionsChange = (event) => {
         const value = parseInt(event.target.value) || 0;
         setNumQuestions(value);
-        setStudents(students.map(student => ({
-            ...student,
-            marks: Array(value).fill(''),
-        })));
+    
+        setStudents(students.map(student => {
+            const currentMarks = student.marks || []; // Ensure marks array exists
+            const updatedMarks = currentMarks.length >= value
+                ? currentMarks.slice(0, value) // Reduce size by slicing
+                : [...currentMarks, ...Array(value - currentMarks.length).fill('')]; // Expand size by filling with empty strings
+    
+            return {
+                ...student,
+                marks: updatedMarks
+            };
+        }));
     };
+    
+
+    if (loading) return <p>Loading...</p>;
+    if (error) return <p>{error}</p>;
 
     return (
-        <div>
+        <div className="container mt-4" style={{ maxWidth: '800px', marginTop: '20px', padding: '20px' }}>
             <h6>Department of Computer Engineering</h6>
             <hr className="my-4" style={{ height: '10px', backgroundColor: '#007bff', opacity: '0.75' }} />
-            <div className="container">
-                <div className="mb-3">
-                    <label htmlFor="course" className="form-label">Course</label>
-                    <select
-                        id="course"
-                        name="course"
-                        value={selectedCourseCode}
-                        onChange={handleCourseCodeChange}
-                        className="form-select"
+            <div className="row">
+                <div className="col-md-12">
+                    <div className="mb-3">
+                        <label className="form-label">Courses</label>
+                        <ul className="list-group">
+                            {courses.map(course => (
+                                <li 
+                                    key={course.courseCode} 
+                                    className={`list-group-item ${course.courseCode === selectedCourseCode ? 'active' : ''}`}
+                                    onClick={() => handleCourseClick(course.courseCode, course.semester)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    {course.courseCode} (Semester: {course.semester})
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div className="mb-3">
+                        <label htmlFor="examType" className="form-label">Select Exam Type</label>
+                        <select
+                            id="examType"
+                            name="examType"
+                            value={selectedType}
+                            onChange={handleTypeChange}
+                            className="form-select"
+                        >
+                            <option value="" disabled>Select Exam Type</option>
+                            <option value="mst1">MST1</option>
+                            <option value="mst2">MST2</option>
+                            <option value="mst3">MST3</option>
+                            <option value="end-sem">End-Sem</option>
+                        </select>
+                    </div>
+                    <div className="mb-3">
+                        <label htmlFor="numQuestions" className="form-label">Number of Questions</label>
+                        <input
+                            type="number"
+                            className="form-control"
+                            id="numQuestions"
+                            value={numQuestions}
+                            onChange={handleNumQuestionsChange}
+                        />
+                    </div>
+                    <button 
+                        className="btn btn-primary"
+                        onClick={handleShowClick}
                     >
-                        <option value="" disabled>Select Course Code</option>
-                        {courses.map(course => (
-                            <option key={course.courseCode} value={course.courseCode}>
-                                {course.courseName} ({course.courseCode})
-                            </option>
-                        ))}
-                    </select>
+                        Show
+                    </button>
                 </div>
-                <div className="mb-3">
-                    <label htmlFor="semester" className="form-label">Semester</label>
-                    <select
-                        id="semester"
-                        name="semester"
-                        value={selectedSemester}
-                        onChange={handleSemesterChange}
-                        className="form-select"
-                    >
-                        <option value="" disabled>Select Semester</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                        <option value="7">7</option>
-                        <option value="8">8</option>
-                    </select>
-                </div>
-                <div className="mb-3">
-                    <label htmlFor="examType" className="form-label">Select Exam Type</label>
-                    <select
-                        id="examType"
-                        name="examType"
-                        value={selectedType}
-                        onChange={handleTypeChange}
-                        className="form-select"
-                    >
-                        <option value="" disabled>Select Exam Type</option>
-                        <option value="mst1">MST1</option>
-                        <option value="mst2">MST2</option>
-                        <option value="mst3">MST3</option>
-                        <option value="end-sem">End-Sem</option>
-                    </select>
-                </div>
-                <div className="mb-3">
-                    <label htmlFor="numQuestions" className="form-label">Number of Questions</label>
-                    <input
-                        type="number"
-                        className="form-control"
-                        id="numQuestions"
-                        value={numQuestions}
-                        onChange={handleNumQuestionsChange}
-                    />
-                </div>
-                <button 
-                    className="btn btn-primary"
-                    onClick={handleShowClick}
-                >
-                    Show
-                </button>
             </div>
             {showMarksForm && (
                 <MarksForm 

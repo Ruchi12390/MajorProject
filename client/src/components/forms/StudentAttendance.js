@@ -1,108 +1,122 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useLocation } from 'react-router-dom';
-import './StudentAttendancePage.css'; // Assuming you have some CSS for styling
+import './StudentAttendancePage.css';
 
 const StudentAttendancePage = () => {
     const location = useLocation();
     const { enrollment } = location.state || {};
-    const [attendanceRecords, setAttendanceRecords] = useState([]);
-    const [studentMarks, setStudentMarks] = useState([]); // To store marks
-    const [monthlyAttendance, setMonthlyAttendance] = useState({});
+    const [groupedAttendance, setGroupedAttendance] = useState({});
     const [error, setError] = useState('');
+    const [showDetails, setShowDetails] = useState({});
 
-    // Fetch both attendance and marks data
+    // Utility to format the date as "Month Year"
+    const formatMonthYear = (date) => {
+        const options = { year: 'numeric', month: 'long' };
+        return new Date(date).toLocaleDateString(undefined, options);
+    };
+
+    // Group attendance records by subject and month
+    const groupAttendanceBySubjectAndMonth = (records) => {
+        const grouped = {};
+
+        records.forEach((record) => {
+            const subject = record.course?.courseName || 'Unknown Course';
+            const monthYear = formatMonthYear(record.date);
+
+            // Initialize subject if not already
+            if (!grouped[subject]) {
+                grouped[subject] = {};
+            }
+
+            // Initialize month for the subject if not already
+            if (!grouped[subject][monthYear]) {
+                grouped[subject][monthYear] = [];
+            }
+
+            // Push the record into the corresponding month
+            grouped[subject][monthYear].push(record);
+        });
+
+        return grouped;
+    };
+
+    // Calculate total presents and total attendance per subject per month
+    const calculateAttendanceSummary = (records) => {
+        const total = records.length;
+        const present = records.filter(record => record.present).length;
+        return { present, total };
+    };
+
+    // Toggle details view for a specific subject and month
+    const toggleDetails = (subject, month) => {
+        setShowDetails(prevState => ({
+            ...prevState,
+            [`${subject}-${month}`]: !prevState[`${subject}-${month}`]
+        }));
+    };
+
+    // Fetch attendance data subject-wise for a student
     useEffect(() => {
-        const fetchStudentData = async () => {
+        const fetchStudentAttendance = async () => {
             if (enrollment) {
                 try {
-                    const attendanceResponse = await axios.get(`http://localhost:5000/api/attendance/${enrollment}`);
-                    setAttendanceRecords(attendanceResponse.data);
-
-                    const marksResponse = await axios.get(`http://localhost:5000/api/marks/${enrollment}`); // Assuming this endpoint returns student marks
-                    setStudentMarks(marksResponse.data);
+                    const response = await axios.get(`http://localhost:5000/api/attendance/${enrollment}`);
+                    const groupedData = groupAttendanceBySubjectAndMonth(response.data);
+                    setGroupedAttendance(groupedData);
                 } catch (err) {
                     setError('No data found.');
-                    console.error('Error fetching records:', err);
+                    console.error('Error fetching attendance:', err);
                 }
             } else {
                 setError('No enrollment information available.');
             }
         };
 
-        fetchStudentData();
+        fetchStudentAttendance();
     }, [enrollment]);
-
-    // Process attendance records to group by month
-    useEffect(() => {
-        const groupByMonth = (records) => {
-            const attendanceMap = {};
-
-            records.forEach(record => {
-                const date = new Date(record.date);
-                const month = date.toLocaleString('default', { month: 'long' });
-                const year = date.getFullYear();
-                const key = `${month} ${year}`;
-
-                if (!attendanceMap[key]) {
-                    attendanceMap[key] = { present: 0, absent: 0 };
-                }
-
-                if (record.present) {
-                    attendanceMap[key].present += 1;
-                } else {
-                    attendanceMap[key].absent += 1;
-                }
-            });
-
-            return attendanceMap;
-        };
-
-        if (attendanceRecords.length > 0) {
-            const monthlyData = groupByMonth(attendanceRecords);
-            setMonthlyAttendance(monthlyData);
-        }
-    }, [attendanceRecords]);
 
     return (
         <div className="attendance-container">
-            <h2>Student Attendance and Marks Records</h2>
+            <h2>Student Attendance Records (Subject-wise & Monthly)</h2>
             {enrollment && <h3 className="welcome-text">Welcome, {enrollment}!</h3>}
             {error && <p className="error-text">{error}</p>}
-            
-            {/* Attendance Section */}
-            <h4>Attendance Records</h4>
-            {Object.keys(monthlyAttendance).length === 0 ? (
+
+            {Object.keys(groupedAttendance).length === 0 ? (
                 <p>No attendance records found.</p>
             ) : (
-                <ul className="attendance-list">
-                    {Object.entries(monthlyAttendance).map(([monthYear, { present, absent }]) => (
-                        <li key={monthYear} className="attendance-item">
-                            {monthYear}: <strong>Present</strong> - {present}, <strong>Absent</strong> - {absent}
-                        </li>
-                    ))}
-                </ul>
-            )}
+                Object.entries(groupedAttendance).map(([subject, months]) => (
+                    <div key={subject} className="subject-attendance">
+                        <h4>Subject: {subject}</h4>
+                        {Object.entries(months).map(([month, records]) => {
+                            const { present, total } = calculateAttendanceSummary(records);
+                            return (
+                                <div key={month} className="monthly-attendance">
+                                    <h5>{month}</h5>
+                                    <p>Present: {present} out of {total}</p>
+                                    <button
+                                        className="view-details-button"
+                                        onClick={() => toggleDetails(subject, month)}
+                                    >
+                                        {showDetails[`${subject}-${month}`] ? 'Hide Details' : 'View Details'}
+                                    </button>
 
-            {/* Marks Section */}
-            <h4>Marks Records</h4>
-            {studentMarks.length === 0 ? (
-                <p>No marks records found.</p>
-            ) : (
-                <ul className="marks-list">
-                    {studentMarks.map((markEntry, index) => (
-                        <li key={index} className="marks-item">
-                            <p>Subject: {markEntry.course_code}, Exam: {markEntry.examType}</p>
-                            <ul>
-                                {markEntry.marks.map((mark, i) => (
-                                    <li key={i}>
-                                        Ques {i + 1}: {mark ? mark : 'N/A'}
-                                    </li>
-                                ))}
-                            </ul>
-                        </li>
-                    ))}
-                </ul>
+                                    {/* Show detailed records if the "View Details" button is clicked */}
+                                    {showDetails[`${subject}-${month}`] && (
+                                        <ul className="attendance-list">
+                                            {records.map((record, index) => (
+                                                <li key={index} className="attendance-item">
+                                                    Date: {new Date(record.date).toLocaleDateString()}, 
+                                                    Status: {record.present ? 'Present' : 'Absent'}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                ))
             )}
         </div>
     );

@@ -5,8 +5,7 @@ import { FaLock } from 'react-icons/fa';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 export default function Signup() {
-    const navigate = useNavigate();
-
+    const navigate = useNavigate()
     const [values, setValues] = useState({
         firstName: '',
         lastName: '',
@@ -29,7 +28,6 @@ export default function Signup() {
         email: /^([a-zA-Z0-9_\.\+-]+)@([a-zA-Z\d\.-]+)\.([a-zA-Z]{2,6})$/,
         name: /^[A-Za-z]{2,}$/,
         password: /^(?=.*\d)(?=.*[a-zA-Z]).{6,}$/
-        // Removed enrollment regex validation
     };
 
     const validateInput = (name, input) => {
@@ -56,7 +54,6 @@ export default function Signup() {
                     setErrorText({ ...errorText, password: '' });
                 }
                 break;
-            // Removed validation for enrollment
             default:
                 break;
         }
@@ -70,28 +67,29 @@ export default function Signup() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-    
+
         if (!values.firstName || !values.lastName || !values.email || !values.password) {
             setErrorText({ ...errorText, global: 'All fields are required' });
             return;
         }
-    
+
         const userDetails = {
+            name: values.firstName,
             email: values.email,
             password: values.password,
             role: values.role || 'student', // Default to 'student' if role is not provided
             enrollment: values.enrollment // Set this based on your requirement
         };
-    
+        localStorage.setItem('role', userDetails.role);
         try {
             const response = await fetch('http://localhost:5000/api/signup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(userDetails)
             });
-    
+
             const data = await response.json();
-    
+
             if (response.ok) {
                 navigate('/login');
             } else {
@@ -172,7 +170,6 @@ export default function Signup() {
                         value={values.enrollment}
                         onChange={handleInputChange}
                     />
-                    {/* Removed validation feedback for enrollment */}
                 </FormGroup>
                 <FormGroup>
                     <Label for="role">Role</Label>
@@ -185,6 +182,7 @@ export default function Signup() {
                     >
                         <option value="student">Student</option>
                         <option value="teacher">Teacher</option>
+                        <option value="admin">Admin</option> {/* Added admin role */}
                     </Input>
                 </FormGroup>
                 <Button color="primary" block type="submit">
